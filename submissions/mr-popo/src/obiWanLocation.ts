@@ -6,8 +6,6 @@ type ObiWanLocation = {
   name: string;
 };
 
-const obiWanLocationSubject$ = webSocket<ObiWanLocation>("ws://localhost:4000");
-
 export const [useObiWanLocation, obiWanLocation$] = bind(
-  obiWanLocationSubject$
+  webSocket<ObiWanLocation>("ws://localhost:4000")
 );
