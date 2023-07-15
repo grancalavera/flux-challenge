@@ -12,15 +12,27 @@ import {
   switchMap,
 } from "rxjs";
 import { fromFetch } from "rxjs/fetch";
-import { assertNever } from "./assertNever";
-import { obiWanLocation$ } from "./obiWanLocation";
-import { withSubscribe } from "./withSubscribe";
+import { assertNever } from "./assert-never";
+import { obiWanLocation$ } from "./obi-wan-location";
+
+export type { ScrollDirection };
+
+export {
+  scrollDown,
+  scrollUp,
+  useIsButtonDisabled,
+  useIsObiWanHere,
+  useIsSlotWarningInCourse,
+  useLoadSithData,
+  useSlotByIndex,
+};
 
 type State = [Slot, Slot, Slot, Slot, Slot];
 type Slot = Empty | Loading | Loaded;
 type Empty = { kind: "empty" };
 type Loading = { kind: "loading" } & WithId;
 type Loaded = { kind: "loaded" } & WithId & SithData;
+type WithId = { id: number };
 type SithData = {
   id: number;
   name: string;
@@ -36,9 +48,9 @@ type Reference = {
   url: string | null;
   id: number | null;
 };
-type WithId = { id: number };
 type ScrollDirection = "up" | "down";
 type IndexedSithData = { index: number; data: SithData };
+type SlotWarnings = [boolean, boolean, boolean, boolean, boolean];
 
 const reduceScrollUp = (state: State) =>
   produce(state, (draft) => {
@@ -143,7 +155,6 @@ const [useIsButtonDisabled] = bind((scrollDirection: ScrollDirection) =>
   )
 );
 
-type SlotWarnings = [boolean, boolean, boolean, boolean, boolean];
 const initialSlotWarnings: SlotWarnings = [false, false, false, false, false];
 
 const slotWarnings$ = combineLatest([obiWanLocation$, sithTracker$]).pipe(
@@ -179,60 +190,4 @@ const [useLoadSithData] = bind<[index: number, id: number], void>(
       switchMap((data) => data.json() as Promise<SithData>),
       map((data) => loadSithData({ index, data }))
     )
-);
-
-export const SithList = () => (
-  <ul className="css-slots">
-    <SithSloth index={0} />
-    <SithSloth index={1} />
-    <SithSloth index={2} />
-    <SithSloth index={3} />
-    <SithSloth index={4} />
-  </ul>
-);
-
-const SithSloth = withSubscribe((props: { index: number }) => {
-  const slot = useSlotByIndex(props.index);
-  const showWarning = useIsObiWanHere(props.index);
-  const shouldInterrupt = useIsSlotWarningInCourse();
-  return (
-    <li className={`css-slot ${showWarning ? "css-warning" : ""}`}>
-      {slot.kind === "loading" && !shouldInterrupt && (
-        <LoadSith index={props.index} id={slot.id} />
-      )}
-
-      {slot.kind === "loaded" && <ShowSith {...slot} />}
-    </li>
-  );
-});
-
-const LoadSith = withSubscribe((props: { id: number; index: number }) => {
-  useLoadSithData(props.index, props.id);
-  return null;
-});
-
-const ShowSith = ({ name, homeworld }: Loaded) => (
-  <>
-    <h3>{name}</h3>
-    <h6>Homeworld: {homeworld.name}</h6>
-  </>
-);
-
-export const Button = withSubscribe(
-  ({ scrollDirection }: { scrollDirection: ScrollDirection }) => {
-    const buttonDisabled = useIsButtonDisabled(scrollDirection);
-    const slotWarningInCourse = useIsSlotWarningInCourse();
-    const isDisabled = buttonDisabled || slotWarningInCourse;
-    return (
-      <button
-        onClick={() => {
-          if (isDisabled) return;
-          scrollDirection === "up" ? scrollUp() : scrollDown();
-        }}
-        className={`css-button-${scrollDirection} ${
-          isDisabled ? "css-button-disabled" : ""
-        }`}
-      ></button>
-    );
-  }
 );

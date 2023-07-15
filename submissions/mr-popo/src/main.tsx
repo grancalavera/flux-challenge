@@ -1,10 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Application } from "./Application";
-import "./index.css";
+import { Layout } from "./layout";
+import "./main.css";
+import { PlanetMonitor } from "./planet-monitor";
+import { SithTracker } from "./sith-tracker";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <Application />
+    <Layout>
+      <PlanetMonitor />
+      <SithTracker />
+    </Layout>
   </React.StrictMode>
 );
