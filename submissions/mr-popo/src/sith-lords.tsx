@@ -13,8 +13,8 @@ import {
 } from "rxjs";
 import { fromFetch } from "rxjs/fetch";
 import { assertNever } from "./assertNever";
-import { withSubscribe } from "./withSubscribe";
 import { obiWanLocation$ } from "./obiWanLocation";
+import { withSubscribe } from "./withSubscribe";
 
 type SithTracker = [Slot, Slot, Slot, Slot, Slot];
 type Slot = Empty | Loading | Loaded;
@@ -45,15 +45,6 @@ const initialState: SithTracker = [
   { kind: "empty" },
   { kind: "empty" },
 ];
-
-const [useLoadSithSlotData] = bind<[index: number, id: number], void>(
-  (index: number, id: number) =>
-    fromFetch(`http://localhost:3000/dark-jedis/${id}`).pipe(
-      filter((response) => response.ok),
-      switchMap((data) => data.json() as Promise<Data>),
-      map((data) => loadSithData({ index, data }))
-    )
-);
 
 const [sithData$, loadSithData] = createSignal<{
   index: number;
@@ -134,7 +125,7 @@ const sithTracker$ = signal$.pipe(
   shareReplay({ bufferSize: 1, refCount: true })
 );
 
-const [useSithIdBySlotIndex] = bind((index: number) =>
+const [useSlotByIndex] = bind((index: number) =>
   sithTracker$.pipe(
     map((sithTracker) => sithTracker[index]),
     filter(Boolean)
@@ -142,9 +133,8 @@ const [useSithIdBySlotIndex] = bind((index: number) =>
 );
 
 const [useIsButtonDisabled] = bind((direction: "up" | "down") =>
-  combineLatest([sithTracker$, slotWarnings$]).pipe(
-    map(([state, slotWarnings]) => {
-      if (slotWarnings.some(Boolean)) return true;
+  sithTracker$.pipe(
+    map((state) => {
       if (direction === "up") {
         const slot = state[0];
         return !(slot.kind === "loaded" && slot.master.id !== null);
@@ -158,6 +148,7 @@ const [useIsButtonDisabled] = bind((direction: "up" | "down") =>
 
 type SlotWarnings = [boolean, boolean, boolean, boolean, boolean];
 const initialSlotWarnings: SlotWarnings = [false, false, false, false, false];
+
 const slotWarnings$ = combineLatest([obiWanLocation$, sithTracker$]).pipe(
   map(
     ([obiWanLocation, slots]) =>
@@ -173,10 +164,28 @@ const slotWarnings$ = combineLatest([obiWanLocation$, sithTracker$]).pipe(
   shareReplay({ bufferSize: 1, refCount: true })
 );
 
-const [useIsObiWanHere] = bind((index: number) =>
-  slotWarnings$.pipe(map((slotWarnings) => slotWarnings[index] ?? false))
+const [useSlotWarningInCourse] = bind(
+  slotWarnings$.pipe(
+    map((warnings) => warnings.some(Boolean)),
+    distinctUntilChanged()
+  )
 );
 
+const [useIsObiWanHere] = bind((index: number) =>
+  slotWarnings$.pipe(map((warnings) => warnings[index] ?? false))
+);
+
+const [useLoadSithSlotData] = bind<[index: number, id: number], void>(
+  (index: number, id: number) => {
+    const sithData$ = fromFetch(`http://localhost:3000/dark-jedis/${id}`).pipe(
+      filter((response) => response.ok),
+      switchMap((data) => data.json() as Promise<Data>),
+      map((data) => loadSithData({ index, data }))
+    );
+
+    return sithData$;
+  }
+);
 export const SithList = () => (
   <ul className="css-slots">
     <SithSloth index={0} />
@@ -188,25 +197,27 @@ export const SithList = () => (
 );
 
 const SithSloth = withSubscribe((props: { index: number }) => {
-  const slot = useSithIdBySlotIndex(props.index);
-  const isObiWanHere = useIsObiWanHere(props.index);
+  const slot = useSlotByIndex(props.index);
+  const showWarning = useIsObiWanHere(props.index);
+  const shouldInterrupt = useSlotWarningInCourse();
 
   return (
-    <li className={`css-slot ${isObiWanHere ? " css-warning" : ""}`}>
-      {slot.kind === "loading" && (
-        <LoadSithLord id={slot.id} index={props.index} />
+    <li className={`css-slot ${showWarning ? "css-warning" : ""}`}>
+      {slot.kind === "loading" && !shouldInterrupt && (
+        <LoadSith index={props.index} id={slot.id} />
       )}
-      {slot.kind === "loaded" && <ShowSithLord {...slot} />}
+
+      {slot.kind === "loaded" && <ShowSith {...slot} />}
     </li>
   );
 });
 
-const LoadSithLord = withSubscribe((props: { id: number; index: number }) => {
+const LoadSith = withSubscribe((props: { id: number; index: number }) => {
   useLoadSithSlotData(props.index, props.id);
   return null;
 });
 
-const ShowSithLord = ({ name, homeworld }: Loaded) => (
+const ShowSith = ({ name, homeworld }: Loaded) => (
   <>
     <h3>{name}</h3>
     <h6>Homeworld: {homeworld.name}</h6>
@@ -215,7 +226,10 @@ const ShowSithLord = ({ name, homeworld }: Loaded) => (
 
 export const Button = withSubscribe(
   ({ direction }: { direction: "up" | "down" }) => {
-    const isDisabled = useIsButtonDisabled(direction);
+    const buttonDisabled = useIsButtonDisabled(direction);
+    const slotWarningInCourse = useSlotWarningInCourse();
+    const isDisabled = buttonDisabled || slotWarningInCourse;
+
     return (
       <button
         onClick={() => {
