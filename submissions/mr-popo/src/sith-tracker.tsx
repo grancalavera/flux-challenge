@@ -26,6 +26,23 @@ export const SithTracker = () => (
   </section>
 );
 
+const SithSlot = withSubscribe((props: { index: number }) => {
+  const slot = useSlotByIndex(props.index);
+  const showWarning = useIsObiWanHere(props.index);
+  const shouldInterruptLoading = useIsSlotWarningInCourse();
+  return (
+    <li className={`css-slot ${showWarning ? "css-warning" : ""}`}>
+      {slot.kind === "loading" && !shouldInterruptLoading && (
+        <LoadSith index={props.index} id={slot.id} />
+      )}
+
+      {slot.kind === "loaded" && (
+        <ShowSith name={slot.name} homeworld={slot.homeworld.name} />
+      )}
+    </li>
+  );
+});
+
 const ScrollButton = withSubscribe(
   ({ scrollDirection }: { scrollDirection: ScrollDirection }) => {
     const buttonDisabled = useIsButtonDisabled(scrollDirection);
@@ -44,23 +61,6 @@ const ScrollButton = withSubscribe(
     );
   }
 );
-
-const SithSlot = withSubscribe((props: { index: number }) => {
-  const slot = useSlotByIndex(props.index);
-  const showWarning = useIsObiWanHere(props.index);
-  const shouldInterruptLoading = useIsSlotWarningInCourse();
-  return (
-    <li className={`css-slot ${showWarning ? "css-warning" : ""}`}>
-      {slot.kind === "loading" && !shouldInterruptLoading && (
-        <LoadSith index={props.index} id={slot.id} />
-      )}
-
-      {slot.kind === "loaded" && (
-        <ShowSith name={slot.name} homeworld={slot.homeworld.name} />
-      )}
-    </li>
-  );
-});
 
 const LoadSith = withSubscribe((props: { id: number; index: number }) => {
   useLoadSithData(props.index, props.id);
