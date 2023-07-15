@@ -101,13 +101,11 @@ const [loadSithData$, loadSithData] = createSignal<IndexedSithData>();
 const [scrollUp$, scrollUp] = createSignal();
 const [scrollDown$, scrollDown] = createSignal();
 
-const signal$ = mergeWithKey({
+const sithTracker$ = mergeWithKey({
   scrollUp$,
   scrollDown$,
   loadSithData$,
-});
-
-const sithTracker$ = signal$.pipe(
+}).pipe(
   scan((state, signal) => {
     switch (signal.type) {
       case "scrollUp$":
