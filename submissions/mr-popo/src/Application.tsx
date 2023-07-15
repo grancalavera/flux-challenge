@@ -9,8 +9,8 @@ export function Application() {
       <section className="css-scrollable-list">
         <SithList />
         <div className="css-scroll-buttons">
-          <Button direction="up" />
-          <Button direction="down" />
+          <Button scrollDirection="up" />
+          <Button scrollDirection="down" />
         </div>
       </section>
     </Layout>

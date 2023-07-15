@@ -16,13 +16,12 @@ import { assertNever } from "./assertNever";
 import { obiWanLocation$ } from "./obiWanLocation";
 import { withSubscribe } from "./withSubscribe";
 
-type SithTracker = [Slot, Slot, Slot, Slot, Slot];
+type State = [Slot, Slot, Slot, Slot, Slot];
 type Slot = Empty | Loading | Loaded;
 type Empty = { kind: "empty" };
 type Loading = { kind: "loading" } & WithId;
-type Loaded = { kind: "loaded" } & WithId & Data;
-type WithId = { id: number };
-type Data = {
+type Loaded = { kind: "loaded" } & WithId & SithData;
+type SithData = {
   id: number;
   name: string;
   homeworld: {
@@ -37,8 +36,60 @@ type Reference = {
   url: string | null;
   id: number | null;
 };
+type WithId = { id: number };
+type ScrollDirection = "up" | "down";
+type IndexedSithData = { index: number; data: SithData };
 
-const initialState: SithTracker = [
+const reduceScrollUp = (state: State) =>
+  produce(state, (draft) => {
+    if (state[0].kind === "loaded" && state[0].master.id !== null) {
+      draft[0] = { kind: "empty" };
+      draft[1] = { kind: "loading", id: state[0].master.id };
+      draft[2] = state[0];
+      draft[3] = state[1];
+      draft[4] = state[2];
+    }
+  });
+
+const reduceScrollDown = (state: State) =>
+  produce(state, (draft) => {
+    if (state[4].kind === "loaded" && state[4].apprentice.id !== null) {
+      draft[0] = state[2];
+      draft[1] = state[3];
+      draft[2] = state[4];
+      draft[3] = { kind: "loading", id: state[4].apprentice.id };
+      draft[4] = { kind: "empty" };
+    }
+  });
+
+const reduceLoadSithData = (state: State, { index, data }: IndexedSithData) =>
+  produce(state, (draft) => {
+    draft[index] = { ...data, kind: "loaded" };
+
+    if (
+      index > -1 &&
+      data.master.id !== null &&
+      state[index - 1]?.kind === "empty"
+    ) {
+      draft[index - 1] = {
+        kind: "loading",
+        id: data.master.id,
+      };
+    }
+
+    if (
+      index < 4 &&
+      data.apprentice.id !== null &&
+      state[index + 1]?.kind === "empty"
+    ) {
+      draft[index + 1] = {
+        kind: "loading",
+        id: data.apprentice.id,
+      };
+    }
+  });
+
+const initialState: State = [
   { kind: "loading", id: 3616 },
   { kind: "empty" },
   { kind: "empty" },
@@ -46,81 +97,29 @@ const initialState: SithTracker = [
   { kind: "empty" },
 ];
 
-const [sithData$, loadSithData] = createSignal<{
-  index: number;
-  data: Data;
-}>();
+const [loadSithData$, loadSithData] = createSignal<IndexedSithData>();
 const [scrollUp$, scrollUp] = createSignal();
 const [scrollDown$, scrollDown] = createSignal();
 
 const signal$ = mergeWithKey({
   scrollUp$,
   scrollDown$,
-  sithData$,
+  loadSithData$,
 });
 
 const sithTracker$ = signal$.pipe(
-  scan(
-    (state, signal) =>
-      produce(state, (draft) => {
-        switch (signal.type) {
-          case "scrollUp$": {
-            if (state[0].kind === "loaded" && state[0].master.id !== null) {
-              draft[0] = { kind: "empty" };
-              draft[1] = { kind: "loading", id: state[0].master.id };
-              draft[2] = { ...state[0] };
-              draft[3] = { ...state[1] };
-              draft[4] = { ...state[2] };
-            }
-
-            break;
-          }
-          case "scrollDown$": {
-            console.log(state);
-            if (state[4].kind === "loaded" && state[4].apprentice.id !== null) {
-              draft[0] = { ...state[2] };
-              draft[1] = { ...state[3] };
-              draft[2] = { ...state[4] };
-              draft[3] = { kind: "loading", id: state[4].apprentice.id };
-              draft[4] = { kind: "empty" };
-            }
-            break;
-          }
-          case "sithData$": {
-            const { data, index } = signal.payload;
-            const slot: Loaded = { ...data, kind: "loaded" };
-            draft[index] = slot;
-
-            if (
-              index > -1 &&
-              data.master.id !== null &&
-              state[index - 1]?.kind === "empty"
-            ) {
-              draft[index - 1] = {
-                kind: "loading",
-                id: data.master.id,
-              };
-            }
-
-            if (
-              index < 4 &&
-              data.apprentice.id !== null &&
-              state[index + 1]?.kind === "empty"
-            ) {
-              draft[index + 1] = {
-                kind: "loading",
-                id: data.apprentice.id,
-              };
-            }
-            break;
-          }
-          default: {
-            assertNever(signal);
-          }
-        }
-      }),
-    initialState
-  ),
+  scan((state, signal) => {
+    switch (signal.type) {
+      case "scrollUp$":
+        return reduceScrollUp(state);
+      case "scrollDown$":
+        return reduceScrollDown(state);
+      case "loadSithData$":
+        return reduceLoadSithData(state, signal.payload);
+      default:
+        assertNever(signal);
+    }
+  }, initialState),
   startWith(initialState),
   shareReplay({ bufferSize: 1, refCount: true })
 );
@@ -132,10 +131,10 @@ const [useSlotByIndex] = bind((index: number) =>
   )
 );
 
-const [useIsButtonDisabled] = bind((direction: "up" | "down") =>
+const [useIsButtonDisabled] = bind((scrollDirection: ScrollDirection) =>
   sithTracker$.pipe(
     map((state) => {
-      if (direction === "up") {
+      if (scrollDirection === "up") {
         const slot = state[0];
         return !(slot.kind === "loaded" && slot.master.id !== null);
       } else {
@@ -164,7 +163,7 @@ const slotWarnings$ = combineLatest([obiWanLocation$, sithTracker$]).pipe(
   shareReplay({ bufferSize: 1, refCount: true })
 );
 
-const [useSlotWarningInCourse] = bind(
+const [useIsSlotWarningInCourse] = bind(
   slotWarnings$.pipe(
     map((warnings) => warnings.some(Boolean)),
     distinctUntilChanged()
@@ -175,17 +174,15 @@ const [useIsObiWanHere] = bind((index: number) =>
   slotWarnings$.pipe(map((warnings) => warnings[index] ?? false))
 );
 
-const [useLoadSithSlotData] = bind<[index: number, id: number], void>(
-  (index: number, id: number) => {
-    const sithData$ = fromFetch(`http://localhost:3000/dark-jedis/${id}`).pipe(
+const [useLoadSithData] = bind<[index: number, id: number], void>(
+  (index: number, id: number) =>
+    fromFetch(`http://localhost:3000/dark-jedis/${id}`).pipe(
       filter((response) => response.ok),
-      switchMap((data) => data.json() as Promise<Data>),
+      switchMap((data) => data.json() as Promise<SithData>),
       map((data) => loadSithData({ index, data }))
-    );
-
-    return sithData$;
-  }
+    )
 );
+
 export const SithList = () => (
   <ul className="css-slots">
     <SithSloth index={0} />
@@ -199,8 +196,7 @@ export const SithList = () => (
 const SithSloth = withSubscribe((props: { index: number }) => {
   const slot = useSlotByIndex(props.index);
   const showWarning = useIsObiWanHere(props.index);
-  const shouldInterrupt = useSlotWarningInCourse();
-
+  const shouldInterrupt = useIsSlotWarningInCourse();
   return (
     <li className={`css-slot ${showWarning ? "css-warning" : ""}`}>
       {slot.kind === "loading" && !shouldInterrupt && (
@@ -213,7 +209,7 @@ const SithSloth = withSubscribe((props: { index: number }) => {
 });
 
 const LoadSith = withSubscribe((props: { id: number; index: number }) => {
-  useLoadSithSlotData(props.index, props.id);
+  useLoadSithData(props.index, props.id);
   return null;
 });
 
@@ -225,18 +221,17 @@ const ShowSith = ({ name, homeworld }: Loaded) => (
 );
 
 export const Button = withSubscribe(
-  ({ direction }: { direction: "up" | "down" }) => {
-    const buttonDisabled = useIsButtonDisabled(direction);
-    const slotWarningInCourse = useSlotWarningInCourse();
+  ({ scrollDirection }: { scrollDirection: ScrollDirection }) => {
+    const buttonDisabled = useIsButtonDisabled(scrollDirection);
+    const slotWarningInCourse = useIsSlotWarningInCourse();
     const isDisabled = buttonDisabled || slotWarningInCourse;
-
     return (
       <button
         onClick={() => {
           if (isDisabled) return;
-          direction === "up" ? scrollUp() : scrollDown();
+          scrollDirection === "up" ? scrollUp() : scrollDown();
         }}
-        className={`css-button-${direction} ${
+        className={`css-button-${scrollDirection} ${
           isDisabled ? "css-button-disabled" : ""
         }`}
       ></button>
